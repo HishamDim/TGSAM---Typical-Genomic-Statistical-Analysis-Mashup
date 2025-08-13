@@ -1,5 +1,5 @@
 # TGSAM
-- Hisham Dimashkieh
+### By: Hisham Dimashkieh
 
 This is an analysis of the 1000 genomes open source data using typical bioinformatics tools. I will hopefully be updating with more and more technique and tools with time.
 
