@@ -6,6 +6,14 @@ set -euo pipefail # prevents errors from being masked
 
 cd GWAS_outputs
 
+# TOC
+# 1. Data preparing (Updating sex and putting in correct format)
+# 2. Genotype Filtering
+# 3. Sex Check
+# 4. Remove Relatedness
+
+
+
 # ====== Defining ======
 INFO="../data/20130606_g1k_3202_samples_ped_population.txt"   # 1000G metadata
 CHRX="../data/1kGP_high_coverage_Illumina.chrX.filtered.SNV_INDEL_SV_phased_panel.v2.vcf.gz" # ChrX
@@ -95,7 +103,8 @@ echo "chrX:"; head chrX.psam
 wc -l chrX.psam chr22.psam  # row counts
 
 
-# ====== 4) Basic genotype filtering ======
+
+# ====== 2) Basic genotype filtering ======
 
 QC_MAF=0.01 # variant-level: keep MAF >= 1% (minor allele frequency; too few carriers in the dataset to reliably detect associations)
 QC_GENO=0.02 # variant-level: keep variants with missingness <= 2%. | FOR REMOVING SNPs & VARIANTS MISSING TOO MANY PEOPLE
@@ -148,10 +157,13 @@ for S in "${SETS[@]}"; do
   echo "${S}.qc variants:"; awk 'END{print NR-1}' "${S}.qc.pvar"  # pvar lines minus header
 done
 
-echo -e "Beginning Sex Check"
 
-# ======sex check (X-chromosome F-statistic against reported SEX)======
-cd GWAS_outputs
+
+
+
+# ====== 3) Sex check (X-chromosome F-statistic against reported SEX)======
+echo -e "Beginning Sex Check"
+# cd GWAS_outputs
 
 plink2 \
   --pfile chrX.qc \
@@ -188,8 +200,12 @@ awk 'NR==1{print "#IID"; next} {print $1}' sex_mismatch.tsv > sex_fail.remove  #
 wc -l sex_mismatch.tsv                          # count flagged samples (includes header)
 head -n 10 sex_mismatch.tsv                     # quick peek at top rows
 
-plink2 \
-  --pfile chrX.qc \
-  --remove sex_fail.remove \
-  --make-pgen \
-  --out chrX.nosexmismatch
+for S in "${SETS[@]}"; do
+  plink2 \
+    --pfile "${S}.qc" \
+    --remove sex_fail.remove \
+    --make-pgen \
+    --out "${S}.nosexmismatch"
+done
+
+# ====== 4) Removing Kin ======
