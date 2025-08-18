@@ -122,7 +122,7 @@ FNR==1 {
   }
   next
 }
-($c+0) > t {print $ci}
+($c+0) > t { print $ci }
 ' "${S}".miss.smiss \
   | sort -u >> mind_fail.txt # run awk on both sample missingness files n sort IIDs and remove duplicates, append to mind_fail.txt
 # didn't use for loop because appending not making two seperate files. (Even though removing dupes, for best practice)
@@ -140,10 +140,56 @@ for S in "${SETS[@]}"; do
     --out "${S}.qc"  # outputs: ${S}.qc.{pgen,pvar,psam}
 done
 
-echo -e "\n DONE ALL BASIC GENOTYPE FILTERING"
+echo -e "\nDONE ALL BASIC GENOTYPE FILTERING"
 
 # quick counts
 wc -l mind_fail.txt  # number of removed samples
 for S in "${SETS[@]}"; do
   echo "${S}.qc variants:"; awk 'END{print NR-1}' "${S}.qc.pvar"  # pvar lines minus header
 done
+
+echo -e "Beginning Sex Check"
+
+# ======sex check (X-chromosome F-statistic against reported SEX)======
+cd GWAS_outputs
+
+plink2 \
+  --pfile chrX.qc \
+  --check-sex \
+  --out sexchk  # writes sexchk.sexcheck
+
+awk 'NR>1 {print $5}' sexchk.sexcheck | sort -n > F_values.txt  # look at F values
+# Does a basic sex check and writes the F_values to a text file to be examined in "Visualizations". This allows for customization of F_value thresholds.
+# exit
+
+rm -f sexchk.sexcheck # removes old sexcheck
+rm -f sexchk.log # removes old sexcheck
+
+SEX_LO=0.5 # lower F cutoff for females
+SEX_HI=0.8 # upper F cutoff for males
+
+# Lets re-run it with proper threshold values
+plink2 \
+  --pfile chrX.qc \
+  --check-sex max-female-xf=${SEX_LO} min-male-xf=${SEX_HI} \
+  --out sexchk_lo${SEX_LO}_hi${SEX_HI} # writes .sexcheck
+
+awk 'NR==1 {
+  for(i=1; i<=NF; i++) {h[$i]=i}
+  print $h["#IID"],$h["PEDSEX"],$h["SNPSEX"],$h["F"],$h["STATUS"]
+  next
+}
+$h["STATUS"]!="OK" {
+  print $h["#IID"],$h["PEDSEX"],$h["SNPSEX"],$h["F"],$h["STATUS"]
+}' OFS="\t" sexchk_lo${SEX_LO}_hi${SEX_HI}.sexcheck > sex_mismatch.tsv  # audit table: IID, reported SEX, SNP-inferred sex, F, status
+
+awk 'NR==1{print "#IID"; next} {print $1}' sex_mismatch.tsv > sex_fail.remove  # IID-only remove list for downstream filters
+
+wc -l sex_mismatch.tsv                          # count flagged samples (includes header)
+head -n 10 sex_mismatch.tsv                     # quick peek at top rows
+
+plink2 \
+  --pfile chrX.qc \
+  --remove sex_fail.remove \
+  --make-pgen \
+  --out chrX.nosexmismatch
